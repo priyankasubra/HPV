@@ -1,0 +1,144 @@
+---
+title: "2026.1.13 MLH Data Visualization"
+output: html_notebook
+---
+
+Goal summary data to have to present:
+1. 13 yo initiation?
+2. 13 yo completion
+    - to match initial data, would pull 13yo from each survey year
+    - alt, could use 2023 data and use utd by 13 flag
+3. 16 yo completion
+    - no flag, so have to pull 16yo from each survey year and then use utd flag
+Use provider weight for all 
+
+1. 13yo HPV initiation from 2023 data
+```{r}
+#DATASET: NISTEENPUF23_PDAT
+#vARIABLE OF INTEREST: P_U13HPV = INITATION BEFORE 13 BDAY
+
+
+#1 filter 2023 data
+NISTEENPUF23_PDAT <- NISTEENPUF23[ NISTEENPUF23$PDAT2 == 1, MLHvars1826 ] 
+
+#2 create inferred birth year
+NISTEENPUF23_PDAT$INFBIRTHYR <- NISTEENPUF23_PDAT$YEAR - NISTEENPUF23_PDAT$AGE
+
+#3 IF USING MULTIPLE YEARS, NEED TO DIVIDE PROVIDER WEIGHT BY NUMBER OF YEARS HERE
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_U13HPV_weighted_sum <- tapply(NISTEENPUF23_PDAT$P_U13HPV * NISTEENPUF23_PDAT$PROVWT_C, 
+                           NISTEENPUF23_PDAT$INFBIRTHYR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEENPUF23_PDAT_total_weighted_pop <- tapply(NISTEENPUF23_PDAT$PROVWT_C, 
+                             NISTEENPUF23_PDAT$INFBIRTHYR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_U13HPV_START_by_age_23 <- (P_U13HPV_weighted_sum / NISTEENPUF23_PDAT_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_U13HPV_START_by_age_23, 
+        main = "2023: Percentage of Teens Initiated by 13yo", 
+        xlab = "Inferred Birth Year", 
+        ylab = "Percentage Initiated (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 100%
+```
+This reflects previous studies suggesting decreased initiation in 2008 cohort.
+
+
+2. 13yo HPV completion from 2023 data
+```{r}
+#DATASET: NISTEENPUF23_PDAT
+#vARIABLE OF INTEREST: P_U13HPV_15INT = UTD BEFORE 13 BDAY
+
+
+#1 filter 2023 data
+NISTEENPUF23_PDAT <- NISTEENPUF23[ NISTEENPUF23$PDAT2 == 1, MLHvars1826 ] 
+
+#2 create inferred birth year
+NISTEENPUF23_PDAT$INFBIRTHYR <- NISTEENPUF23_PDAT$YEAR - NISTEENPUF23_PDAT$AGE
+
+#3 IF USING MULTIPLE YEARS, NEED TO DIVIDE PROVIDER WEIGHT BY NUMBER OF YEARS HERE
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_U13HPV_15INT_weighted_sum <- tapply(NISTEENPUF23_PDAT$P_U13HPV_15INT * NISTEENPUF23_PDAT$PROVWT_C, 
+                           NISTEENPUF23_PDAT$INFBIRTHYR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEENPUF23_PDAT_total_weighted_pop <- tapply(NISTEENPUF23_PDAT$PROVWT_C, 
+                             NISTEENPUF23_PDAT$INFBIRTHYR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_U13HPV_UTD_by_age_23 <- (P_U13HPV_15INT_weighted_sum / NISTEENPUF23_PDAT_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_U13HPV_UTD_by_age_23, 
+        main = "2023: Percentage of Teens UTD by 13yo", 
+        xlab = "Inferred Birth Year", 
+        ylab = "Percentage Up-to-Date (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 100%
+```
+This reflects previous studies suggesting decreased completion in 2008 cohort.
+
+3. 16 yo completion:have to pull from each survey year
+
+```{r}
+#DATASET: NISTEEN_16_PDAT_MLHVARS_ALL
+#vARIABLE OF INTEREST: P_UTDHPV_15INT = 3+ HPV , or 2+ HPV with first shot given before age 15 and interval between first and second shot at least 5 months (minus 4 days).
+
+
+MLHvars1826 <- c("SEQNUMT", "AGE", "PDAT2", "SEX", "YEAR", "PROVWT_C", "P_N13HPV", "P_NUMHPV", "P_U13HPV", "P_UTDHPV", "P_UTDHPV_15INT", "P_UTDHPV2", "P_UTDHPV3C_15INT")
+
+NISTEENPUF23_16_PDAT <- NISTEENPUF23[NISTEENPUF23$AGE == 16 & NISTEENPUF23$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF22_16_PDAT <- NISTEENPUF22[NISTEENPUF22$AGE == 16 & NISTEENPUF22$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF21_16_PDAT <- NISTEENPUF21[NISTEENPUF21$AGE == 16 & NISTEENPUF21$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF20_16_PDAT <- NISTEENPUF20[NISTEENPUF20$AGE == 16 & NISTEENPUF20$PDAT2 == 1, MLHvars1826 ]
+NISTEENPUF19_16_PDAT <- NISTEENPUF19[NISTEENPUF19$AGE == 16 & NISTEENPUF19$PDAT2 == 1, MLHvars1826 ] 
+
+#combine into one dataset
+NISTEEN_16_PDAT_MLHVARS_ALL <- rbind(NISTEENPUF23_16_PDAT,NISTEENPUF22_16_PDAT, NISTEENPUF21_16_PDAT, NISTEENPUF20_16_PDAT, NISTEENPUF19_16_PDAT)
+
+# Divide weights by 5 to obtain the revised weights for the 5-year average [6]
+NISTEEN_16_PDAT_MLHVARS_ALL$NEWWT <- NISTEEN_16_PDAT_MLHVARS_ALL$PROVWT_C / 5
+
+# Create inferred birthyear variable
+NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR <- NISTEEN_16_PDAT_MLHVARS_ALL$YEAR-16
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_UTDHPV_15INT_weighted_sum <- tapply(NISTEEN_16_PDAT_MLHVARS_ALL$P_UTDHPV_15INT * NISTEEN_16_PDAT_MLHVARS_ALL$PROVWT_C, 
+                           NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEEN_16_PDAT_MLHVARS_ALLT_total_weighted_pop <- tapply(NISTEEN_16_PDAT_MLHVARS_ALL$PROVWT_C, 
+                             NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_UTDHPV_15INT_by_16 <- (P_UTDHPV_15INT_weighted_sum / NISTEEN_16_PDAT_MLHVARS_ALLT_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_UTDHPV_15INT_by_16, 
+        main = "2019-2023: Percentage of Teens UTD by 16yo", 
+        xlab = "Inferred Birth Year", 
+        ylab = "Percentage Up-to-Date (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 100%
+```
+This is where we would want to add in our 2008 16yo data from the 2024 dataset.
+
+
+

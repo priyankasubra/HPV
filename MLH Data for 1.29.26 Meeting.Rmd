@@ -1,0 +1,181 @@
+---
+title: "MLH Data for 1.29.26 Meeting"
+output: html_notebook
+---
+
+1. 2023 Data: Percent of Teens UTD by 13 years old, by birth year. 
+Goal: Confirm data from previous studies that suggests 2008 had significantly lower vax rates.
+
+```{r}
+#DATASET: NISTEENPUF23_PDAT
+#VARIABLE OF INTEREST: P_U13HPV_15INT = UTD BEFORE 13 BDAY
+MLHvars1826 <- c("SEQNUMT", "AGE", "PDAT2", "SEX", "YEAR", "PROVWT_C", "P_N13HPV", "P_NUMHPV", "P_U13HPV", "P_UTDHPV", "P_UTDHPV_15INT", "P_UTDHPV2", "P_UTDHPV3C_15INT", "STRATUM", "P_U13HPV_15INT")
+#This filters the data to only variables I am interested in. Just allows for a smaller databook w easier processing.
+#Note that PU13HPV_15INT is only in the 2023 dataset.
+
+#1 filter 2023 data
+NISTEENPUF23_PDAT <- NISTEENPUF23[ NISTEENPUF23$PDAT2 == 1 & !is.na(NISTEENPUF23$PROVWT_C), MLHvars1826 ] 
+# filters to teens w adequate provider data, with a PROVWT_C value, and keeps the variables I wanted.
+
+#2 create inferred birth year
+NISTEENPUF23_PDAT$INFBIRTHYR <- NISTEENPUF23_PDAT$YEAR - NISTEENPUF23_PDAT$AGE
+
+#3 IF USING MULTIPLE YEARS, NEED TO DIVIDE PROVIDER WEIGHT BY NUMBER OF YEARS HERE
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_U13HPV_15INT_weighted_sum <- tapply(NISTEENPUF23_PDAT$P_U13HPV_15INT * NISTEENPUF23_PDAT$PROVWT_C, 
+                           NISTEENPUF23_PDAT$INFBIRTHYR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEENPUF23_PDAT_total_weighted_pop <- tapply(NISTEENPUF23_PDAT$PROVWT_C, 
+                             NISTEENPUF23_PDAT$INFBIRTHYR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_U13HPV_UTD_by_age_23 <- (P_U13HPV_15INT_weighted_sum / NISTEENPUF23_PDAT_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_U13HPV_UTD_by_age_23, 
+        main = "2023: Percentage of Teens UTD by 13yo", 
+        xlab = "Inferred Birth Year", 
+        ylab = "Percentage Up-to-Date (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 100%
+```
+While these numbers are low, they reflect what is found in the codebook.
+
+1b. Statistics for 2023, UTD by 13 yo, by birth year:
+
+```{r}
+#DATASET: NISTEENPUF23_PDAT
+#VARIABLE OF INTEREST: P_U13HPV_15INT = UTD BEFORE 13 BDAY
+library(survey)
+# you may need to download this via Tools -> install packages
+
+# 1. Convert the birth year to a factor (idk why?)
+NISTEENPUF23_PDAT$BIRTH_FACTOR <- as.factor(NISTEENPUF23_PDAT$INFBIRTHYR)
+
+# 2. Change the reference level to 2008
+# This makes 2008 the new baseline (Intercept)
+NISTEENPUF23_PDAT$BIRTH_FACTOR <- relevel(NISTEENPUF23_PDAT$BIRTH_FACTOR, ref = "2008")
+
+# 3. Update your survey design object to include the new variable
+PUF23_U13HPV_2008 <- svydesign(id = ~SEQNUMT, 
+                            strata = ~STRATUM, 
+                            weights = ~PROVWT_C, 
+                            data = NISTEENPUF23_PDAT, 
+                            nest = TRUE)
+
+# 4. Run the model using the new factor variable
+PUF23_U13HPV_2008_model <- svyglm(P_U13HPV_15INT ~ BIRTH_FACTOR, 
+                   design = PUF23_U13HPV_2008, 
+                   family = quasibinomial())
+
+summary(PUF23_U13HPV_2008_model)
+```
+This found that 2009 was significantly higher than 2008, and 2007 was elevated (p = 0.066).
+Likely that this discrepancy from previous reports is because they used a different stats approach...
+
+2. Tracking the 2008 cohort since their 13yo data (2021)
+```{r}
+#DATASET: NISTEEN_08_PDAT_MLHVARS_ALL
+#VARIABLE OF INTEREST: P_UTDHPV_15INT = 3+ HPV , or 2+ HPV with first shot given before age 15 and interval between first and second shot at least 5 months (minus 4 days).
+
+
+MLHvars12726 <- c("SEQNUMT", "AGE", "PDAT2", "SEX", "YEAR", "PROVWT_C", "P_N13HPV", "P_NUMHPV", "P_U13HPV", "P_UTDHPV", "P_UTDHPV_15INT", "P_UTDHPV2", "STRATUM")
+
+NISTEENPUF23_08_PDAT <- NISTEENPUF23[NISTEENPUF23$AGE == 15 & NISTEENPUF23$PDAT2 == 1, MLHvars12726 ] 
+NISTEENPUF22_08_PDAT <- NISTEENPUF22[NISTEENPUF22$AGE == 14 & NISTEENPUF22$PDAT2 == 1, MLHvars12726 ] 
+NISTEENPUF21_08_PDAT <- NISTEENPUF21[NISTEENPUF21$AGE == 13 & NISTEENPUF21$PDAT2 == 1, MLHvars12726 ] 
+
+#combine into one dataset
+NISTEEN_08_PDAT_MLHVARS_ALL <- rbind(NISTEENPUF23_08_PDAT,NISTEENPUF22_08_PDAT, NISTEENPUF21_08_PDAT)
+
+# Divide weights by 3 to obtain the revised weights for the 3-year average [6]
+NISTEEN_08_PDAT_MLHVARS_ALL$NEWWT <- NISTEEN_08_PDAT_MLHVARS_ALL$PROVWT_C / 3
+
+#DATASET: NISTEEN_08_PDAT_MLHVARS_ALL
+#VARIABLE OF INTEREST: P_UTDHPV_15INT = 3+ HPV , or 2+ HPV with first shot given before age 15 and interval between first and second shot at least 5 months (minus 4 days).
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_UTDHPV_15INT_2008_weighted_sum <- tapply(NISTEEN_08_PDAT_MLHVARS_ALL$P_UTDHPV_15INT * NISTEEN_08_PDAT_MLHVARS_ALL$NEWWT, 
+                           NISTEEN_08_PDAT_MLHVARS_ALL$YEAR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEEN_08_PDAT_MLHVARS_ALL_total_weighted_pop <- tapply(NISTEEN_08_PDAT_MLHVARS_ALL$NEWWT, 
+                             NISTEEN_08_PDAT_MLHVARS_ALL$YEAR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_UTDHPV_15INT_08 <- (P_UTDHPV_15INT_2008_weighted_sum / NISTEEN_08_PDAT_MLHVARS_ALL_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_UTDHPV_15INT_08, 
+        main = "2021-2023: % OF 2008 (Inferred) UTD", 
+        xlab = "Survey Year", 
+        ylab = "Percentage Up-to-Date (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 50%
+```
+Note that this has much higher rates that from above chart...First chart used a retrospective flag in the 2023 data, 
+whereas this pulled from each survey year. 
+
+
+
+3. % of 16yo UTD by birth year: this is where we would add the 2008 cohort.
+```{r}
+#DATASET: NISTEEN_16_PDAT_MLHVARS_ALL
+#vARIABLE OF INTEREST: P_UTDHPV_15INT = 3+ HPV , or 2+ HPV with first shot given before age 15 and interval between first and second shot at least 5 months (minus 4 days).
+
+
+MLHvars1826 <- c("SEQNUMT", "AGE", "PDAT2", "SEX", "YEAR", "PROVWT_C", "P_N13HPV", "P_NUMHPV", "P_U13HPV", "P_UTDHPV", "P_UTDHPV_15INT", "P_UTDHPV2", "P_UTDHPV3C_15INT")
+
+NISTEENPUF23_16_PDAT <- NISTEENPUF23[NISTEENPUF23$AGE == 16 & NISTEENPUF23$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF22_16_PDAT <- NISTEENPUF22[NISTEENPUF22$AGE == 16 & NISTEENPUF22$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF21_16_PDAT <- NISTEENPUF21[NISTEENPUF21$AGE == 16 & NISTEENPUF21$PDAT2 == 1, MLHvars1826 ] 
+NISTEENPUF20_16_PDAT <- NISTEENPUF20[NISTEENPUF20$AGE == 16 & NISTEENPUF20$PDAT2 == 1, MLHvars1826 ]
+NISTEENPUF19_16_PDAT <- NISTEENPUF19[NISTEENPUF19$AGE == 16 & NISTEENPUF19$PDAT2 == 1, MLHvars1826 ] 
+
+#combine into one dataset
+NISTEEN_16_PDAT_MLHVARS_ALL <- rbind(NISTEENPUF23_16_PDAT,NISTEENPUF22_16_PDAT, NISTEENPUF21_16_PDAT, NISTEENPUF20_16_PDAT, NISTEENPUF19_16_PDAT)
+
+# Divide weights by 5 to obtain the revised weights for the 5-year average [6]
+NISTEEN_16_PDAT_MLHVARS_ALL$NEWWT <- NISTEEN_16_PDAT_MLHVARS_ALL$PROVWT_C / 5
+
+# Create inferred birthyear variable
+NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR <- NISTEEN_16_PDAT_MLHVARS_ALL$YEAR-16
+
+# We multiply the 0/1 status by the weight to get the weighted success count
+P_UTDHPV_15INT_weighted_sum <- tapply(NISTEEN_16_PDAT_MLHVARS_ALL$P_UTDHPV_15INT * NISTEEN_16_PDAT_MLHVARS_ALL$NEWWT, 
+                           NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR, 
+                           sum, na.rm = TRUE)
+
+# B. Calculate the total weighted population per birth year (Denominator)
+NISTEEN_16_PDAT_MLHVARS_ALLT_total_weighted_pop <- tapply(NISTEEN_16_PDAT_MLHVARS_ALL$NEWWT, 
+                             NISTEEN_16_PDAT_MLHVARS_ALL$INFBIRTHYR, 
+                             sum, na.rm = TRUE)
+
+# C. Final Weighted Percentage Calculation (Ratio of weighted sums)
+P_UTDHPV_15INT_by_16 <- (P_UTDHPV_15INT_weighted_sum / NISTEEN_16_PDAT_MLHVARS_ALLT_total_weighted_pop) * 100
+
+
+#4 create bar graph
+barplot(P_UTDHPV_15INT_by_16, 
+        main = "2019-2023: Percentage of Teens UTD by 16yo", 
+        xlab = "Inferred Birth Year", 
+        ylab = "Percentage Up-to-Date (%)", 
+        col = "steelblue",
+        border = "white",
+        ylim = c(0, 100)) # Sets the axis from 0% to 100%
+```
+
+
+
+
+
